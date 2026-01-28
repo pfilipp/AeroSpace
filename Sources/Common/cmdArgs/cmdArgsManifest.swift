@@ -6,6 +6,7 @@ public enum CmdKind: String, CaseIterable, Equatable, Sendable {
     case closeAllWindowsButCurrent = "close-all-windows-but-current"
     case config
     case debugWindows = "debug-windows"
+    case dumpTree = "dump-tree"
     case echo
     case enable
     case eval
@@ -66,6 +67,8 @@ func initSubcommands() -> [String: any SubCommandParserProtocol] {
                 result[kind.rawValue] = SubCommandParser(parseConfigCmdArgs)
             case .debugWindows:
                 result[kind.rawValue] = SubCommandParser(DebugWindowsCmdArgs.init)
+            case .dumpTree:
+                result[kind.rawValue] = SubCommandParser(DumpTreeCmdArgs.init)
             case .echo:
                 result[kind.rawValue] = SubCommandParser(EchoCmdArgs.init)
             case .enable:
