@@ -19,8 +19,9 @@ let config_help_generated = """
 let debug_windows_help_generated = """
     USAGE: debug-windows [-h|--help] [--window-id <window-id>]
     """
-let dump_tree_help_generated = """
-    USAGE: dump-tree [-h|--help] [--workspace <workspace>] [--focused]
+let tree_help_generated = """
+    USAGE: tree [-h|--help] [--json] [--workspace <workspace>] [--focused]
+                [--floating-windows-as-tiling-windows]
     """
 let echo_help_generated = """
     USAGE: echo [-h|--help] [--stderr] [--window-id <window-id>] -- <string>...

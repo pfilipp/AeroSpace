@@ -18,8 +18,6 @@ extension CmdArgs {
                 command = ConfigCommand(args: self as! ConfigCmdArgs)
             case .debugWindows:
                 command = DebugWindowsCommand(args: self as! DebugWindowsCmdArgs)
-            case .dumpTree:
-                command = DumpTreeCommand(args: self as! DumpTreeCmdArgs)
             case .echo:
                 command = EchoCommand(args: self as! EchoCmdArgs)
             case .enable:
@@ -88,6 +86,8 @@ extension CmdArgs {
                 command = TestCommand(args: self as! TestCmdArgs)
             case .testNot:
                 command = TestNotCommand(args: self as! TestNotCmdArgs)
+            case .tree:
+                command = TreeCommand(args: self as! TreeCmdArgs)
             case .triggerBinding:
                 command = TriggerBindingCommand(args: self as! TriggerBindingCmdArgs)
             case .volume:

@@ -1,0 +1,36 @@
+= aerospace-tree(1)
+include::util/man-attributes.adoc[]
+:manname: aerospace-tree
+// tag::purpose[]
+:manpurpose: Print the window tree hierarchy
+// end::purpose[]
+
+// =========================================================== Synopsis
+== Synopsis
+[verse]
+// tag::synopsis[]
+aerospace tree [-h|--help] [--json] [--workspace <workspace>] [--focused]
+               [--floating-windows-as-tiling-windows]
+// end::synopsis[]
+
+// =========================================================== Description
+== Description
+
+// tag::body[]
+{manpurpose}
+
+By default, the output is a human-readable text tree with box-drawing characters.
+Use `--json` for machine-readable JSON output.
+
+// =========================================================== Options
+include::util/conditional-options-header.adoc[]
+
+-h, --help:: Print help
+--json:: Output as JSON instead of human-readable tree
+--workspace <workspace>:: Only show tree for specified workspace
+--focused:: Only show tree for the focused workspace
+--floating-windows-as-tiling-windows:: Include floating windows as children of the root tiling container instead of a separate section
+// end::body[]
+
+// =========================================================== Footer
+include::util/man-footer.adoc[]
