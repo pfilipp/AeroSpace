@@ -6,7 +6,6 @@ public enum CmdKind: String, CaseIterable, Equatable, Sendable {
     case closeAllWindowsButCurrent = "close-all-windows-but-current"
     case config
     case debugWindows = "debug-windows"
-    case dumpTree = "dump-tree"
     case echo
     case enable
     case eval
@@ -44,6 +43,7 @@ public enum CmdKind: String, CaseIterable, Equatable, Sendable {
     case swap
     case test
     case testNot = "test-not"
+    case tree
     case triggerBinding = "trigger-binding"
 
     case _true = "true"
@@ -67,8 +67,6 @@ func initSubcommands() -> [String: any SubCommandParserProtocol] {
                 result[kind.rawValue] = SubCommandParser(parseConfigCmdArgs)
             case .debugWindows:
                 result[kind.rawValue] = SubCommandParser(DebugWindowsCmdArgs.init)
-            case .dumpTree:
-                result[kind.rawValue] = SubCommandParser(DumpTreeCmdArgs.init)
             case .echo:
                 result[kind.rawValue] = SubCommandParser(EchoCmdArgs.init)
             case .enable:
@@ -143,6 +141,8 @@ func initSubcommands() -> [String: any SubCommandParserProtocol] {
                 result[kind.rawValue] = SubCommandParser(parseTestCmdArgs)
             case .testNot:
                 result[kind.rawValue] = SubCommandParser(parseTestNotCmdArgs)
+            case .tree:
+                result[kind.rawValue] = SubCommandParser(TreeCmdArgs.init)
             case .triggerBinding:
                 result[kind.rawValue] = SubCommandParser(parseTriggerBindingCmdArgs)
             case ._true:
