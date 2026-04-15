@@ -3,9 +3,9 @@ import Common
 
 struct TreeCommand: Command {
     let args: TreeCmdArgs
-    /*conforms*/ var shouldResetClosedWindowsCache = false
+    /*conforms*/ let shouldResetClosedWindowsCache = false
 
-    func run(_ env: CmdEnv, _ io: CmdIo) async throws -> Bool {
+    func run(_ env: CmdEnv, _ io: CmdIo) async -> BinaryExitCode {
         let focus = focus
         let workspaces: [Workspace] = if args.focusedOnly {
             [focus.workspace]
@@ -15,24 +15,28 @@ struct TreeCommand: Command {
             Workspace.all
         }
 
-        if args.json {
-            var result: [[String: Any]] = []
-            for workspace in workspaces {
-                result.append(try await dumpWorkspaceJson(workspace, focus: focus))
-            }
+        do {
+            if args.json {
+                var result: [[String: Any]] = []
+                for workspace in workspaces {
+                    result.append(try await dumpWorkspaceJson(workspace, focus: focus))
+                }
 
-            let jsonData = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
-            guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-                return io.err("Failed to encode JSON")
+                let jsonData = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
+                guard let jsonString = String(data: jsonData, encoding: .utf8) else {
+                    return .fail(io.err("Failed to encode JSON"))
+                }
+                return .succ(io.out(jsonString))
+            } else {
+                var lines: [String] = []
+                for (i, workspace) in workspaces.enumerated() {
+                    if i > 0 { lines.append("") }
+                    try await renderWorkspaceText(workspace, focus: focus, into: &lines)
+                }
+                return .succ(io.out(lines.joined(separator: "\n")))
             }
-            return io.out(jsonString)
-        } else {
-            var lines: [String] = []
-            for (i, workspace) in workspaces.enumerated() {
-                if i > 0 { lines.append("") }
-                try await renderWorkspaceText(workspace, focus: focus, into: &lines)
-            }
-            return io.out(lines.joined(separator: "\n"))
+        } catch {
+            return .fail(io.err("tree command failed: \(error)"))
         }
     }
 
@@ -130,7 +134,7 @@ struct TreeCommand: Command {
             "window-id": window.windowId,
             "app-bundle-id": window.app.rawAppBundleId ?? "unknown",
             "app-name": window.app.name ?? "unknown",
-            "title": try await window.title,
+            "title": try await window.getTitle(.nonCancellable),
             "is-focused": focus.windowOrNil?.windowId == window.windowId,
         ]
     }
@@ -251,7 +255,7 @@ struct TreeCommand: Command {
     @MainActor
     private func windowDescription(_ window: Window, focus: LiveFocus) async throws -> String {
         let appName = window.app.name ?? "unknown"
-        let title = try await window.title
+        let title = try await window.getTitle(.nonCancellable)
         let isFocused = focus.windowOrNil?.windowId == window.windowId
         let focusMarker = isFocused ? " *" : ""
         return "[\(window.windowId)] \(appName) \u{2014} \"\(title)\"\(focusMarker)"
