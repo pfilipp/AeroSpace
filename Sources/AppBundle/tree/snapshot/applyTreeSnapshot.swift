@@ -2,17 +2,23 @@ import AppKit
 import Common
 
 struct TreeSnapshotApplyResult: Equatable {
-    /// Window IDs named in the snapshot that don't exist. Ascending, unique
+    /// Window IDs named by the snapshot but not placed: the window doesn't exist, or it can't be placed right now
+    /// (see ``applyTreeSnapshot(_:)``). Ascending, unique. IDs in ignored repeated workspace entries are not reported
     let skippedWindowIds: [UInt32]
 }
 
 /// Makes each named workspace match its snapshot. Looks windows up with `Window.get(byId:)`.
 ///
-/// - A workspace not named is untouched. If a workspace is named more than once, only its first entry is applied
+/// - A workspace not named is untouched. If a workspace is named more than once, only its first entry is applied;
+///   the repeated entries are ignored entirely and their window IDs are not reported
 /// - A window ID named more than once is applied at its first occurrence only (workspaces in order, the tiling tree
 ///   depth-first, then the floating windows)
-/// - Missing windows are skipped and reported. Containers left without windows are not created
-/// - Windows that were tiled in a rebuilt workspace and are not named anywhere are appended to its new root
+/// - A window is placed only if it is currently tiled or floating with `layoutReason == .standard`. Any other window
+///   (missing, macOS minimized/fullscreen/hidden-app, popup, or in a temporary macOS layout) is not moved and its ID
+///   is reported in `skippedWindowIds`
+/// - Containers left without windows are not created
+/// - A weight that is not a positive finite number is treated as absent (`WEIGHT_AUTO`)
+/// - Windows that were tiled in a rebuilt workspace and are not placed by the snapshot are appended to its new root
 @MainActor func applyTreeSnapshot(_ workspaces: [TreeSnapshotWorkspace]) -> TreeSnapshotApplyResult {
     // Resolve every window before touching the tree: once a root is unbound, its windows are no longer reachable
     // from `Workspace.all` (which is what `Window.get(byId:)` scans in unit tests)
@@ -66,10 +72,10 @@ private struct SnapshotPlan {
     var claimedWindowIds: Set<UInt32> = []
     var skippedWindowIds: Set<UInt32> = []
 
-    /// Returns nil for a window that is missing or already claimed
+    /// Returns nil for a window that is missing, not placeable or already claimed
     @MainActor mutating func resolve(_ snapshot: TreeSnapshotWindow) -> Window? {
         if claimedWindowIds.contains(snapshot.windowId) { return nil }
-        guard let window = Window.get(byId: snapshot.windowId) else {
+        guard let window = Window.get(byId: snapshot.windowId), isPlaceable(window) else {
             skippedWindowIds.insert(snapshot.windowId)
             return nil
         }
@@ -111,14 +117,31 @@ private indirect enum PlannedNode {
     case container(PlannedContainer)
 }
 
+/// Windows in macOS special containers (minimized, fullscreen, hidden app, popup) or in a temporary macOS layout are
+/// owned by `normalizeLayoutReason`. Tiling them would leave an invisible window in a tile, and the next normalization
+/// would relayout it anyway
+@MainActor
+private func isPlaceable(_ window: Window) -> Bool {
+    guard window.layoutReason == .standard else { return false }
+    return switch window.windowParentCases {
+        case .tilingContainer, .floatingWindowsContainer: true
+        case .unbound, .macosMinimizedWindowsContainer, .macosFullscreenWindowsContainer,
+             .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer: false
+    }
+}
+
+private func sanitizedWeight(_ weight: CGFloat?) -> CGFloat {
+    if let weight, weight.isFinite, weight > 0 { weight } else { WEIGHT_AUTO }
+}
+
 @MainActor
 private func bindChildren(_ children: [PlannedNode], to parent: TilingContainer) {
     for child in children {
         switch child {
             case .window(let window, let weight):
-                window.bind(to: parent, adaptiveWeight: weight ?? WEIGHT_AUTO, index: INDEX_BIND_LAST)
+                window.bind(to: parent, adaptiveWeight: sanitizedWeight(weight), index: INDEX_BIND_LAST)
             case .container(let c):
-                let container = TilingContainer(parent: parent, adaptiveWeight: c.weight ?? WEIGHT_AUTO, c.orientation, c.layout, index: INDEX_BIND_LAST)
+                let container = TilingContainer(parent: parent, adaptiveWeight: sanitizedWeight(c.weight), c.orientation, c.layout, index: INDEX_BIND_LAST)
                 bindChildren(c.children, to: container)
         }
     }

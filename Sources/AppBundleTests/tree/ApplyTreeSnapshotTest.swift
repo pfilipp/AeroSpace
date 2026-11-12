@@ -237,6 +237,92 @@ final class ApplyTreeSnapshotTest: XCTestCase {
         XCTAssertTrue(focus.windowOrNil === window2)
         assertEquals(a.rootTilingContainer.layoutDescription, .h_tiles([.window(2)]))
     }
+
+    // MARK: fix round 1
+
+    func testSkipsFullscreenWindow() {
+        var fullscreen: Window!
+        var hidden: Window!
+        let workspace = Workspace.get(byName: "a").apply {
+            $0.rootTilingContainer.apply {
+                TestWindow.new(id: 1, parent: $0)
+            }
+            fullscreen = TestWindow.new(id: 2, parent: $0.macOsNativeFullscreenWindowsContainer)
+            hidden = TestWindow.new(id: 3, parent: $0.macOsNativeHiddenAppsWindowsContainer)
+        }
+        let result = applyTreeSnapshot([
+            snapshotWorkspace("a", container(.tiles, .h, [win(2), win(1)]), floating: [TreeSnapshotWindow(windowId: 3, weight: nil)]),
+        ])
+        XCTAssertTrue(fullscreen.parent === workspace.macOsNativeFullscreenWindowsContainer)
+        XCTAssertTrue(hidden.parent === workspace.macOsNativeHiddenAppsWindowsContainer)
+        assertEquals(workspace.rootTilingContainer.layoutDescription, .h_tiles([.window(1)]))
+        assertEquals(result, TreeSnapshotApplyResult(skippedWindowIds: [2, 3]))
+    }
+
+    func testSkipsMinimizedWindow() {
+        let minimized = TestWindow.new(id: 2, parent: macosMinimizedWindowsContainer)
+        defer { minimized.unbindFromParent() } // setUpWorkspacesForTests doesn't clean the global container
+        let workspace = Workspace.get(byName: "a").apply {
+            $0.rootTilingContainer.apply {
+                TestWindow.new(id: 1, parent: $0)
+            }
+        }
+        let result = applyTreeSnapshot([snapshotWorkspace("a", container(.tiles, .h, [win(1), win(2)]))])
+        XCTAssertTrue(minimized.parent === macosMinimizedWindowsContainer)
+        assertEquals(workspace.rootTilingContainer.layoutDescription, .h_tiles([.window(1)]))
+        assertEquals(result, TreeSnapshotApplyResult(skippedWindowIds: [2]))
+    }
+
+    func testNonStandardLayoutReasonIsSkipped() {
+        var tiledMacos: Window!
+        var floatingMacos: Window!
+        let workspace = Workspace.get(byName: "a").apply {
+            $0.rootTilingContainer.apply {
+                TestWindow.new(id: 1, parent: $0)
+                tiledMacos = TestWindow.new(id: 2, parent: $0)
+            }
+            floatingMacos = TestWindow.new(id: 3, parent: $0.floatingWindowsContainer)
+        }
+        tiledMacos.layoutReason = .macos(prevParentKind: .tilingContainer)
+        floatingMacos.layoutReason = .macos(prevParentKind: .floatingWindowsContainer)
+        let result = applyTreeSnapshot([
+            snapshotWorkspace("a", container(.tiles, .v, [win(3), .container(container(.tiles, .h, [win(2), win(1)]))])),
+            snapshotWorkspace("b", container(.tiles, .h, [win(2)])),
+        ])
+        XCTAssertTrue(floatingMacos.parent === workspace.floatingWindowsContainer)
+        // Not placed by the snapshot, so it stays a tiled window of the workspace it was in
+        XCTAssertTrue(tiledMacos.nodeWorkspace === workspace)
+        assertEquals(workspace.rootTilingContainer.layoutDescription, .v_tiles([.h_tiles([.window(1)]), .window(2)]))
+        assertEquals(Workspace.get(byName: "b").rootTilingContainer.layoutDescription, .h_tiles([]))
+        assertEquals(result, TreeSnapshotApplyResult(skippedWindowIds: [2, 3]))
+    }
+
+    func testInvalidWeightFallsBackToAuto() {
+        let expected = referenceWeights([WEIGHT_AUTO, 2, WEIGHT_AUTO, WEIGHT_AUTO, WEIGHT_AUTO, WEIGHT_AUTO])
+        let root = Workspace.get(byName: "a").rootTilingContainer
+        let windows = (1 ... 6).map { TestWindow.new(id: UInt32($0), parent: root) }
+        _ = applyTreeSnapshot([snapshotWorkspace("a", container(.tiles, .h, [
+            win(1, weight: 0), win(2, weight: 2), win(3, weight: -5),
+            win(4, weight: .nan), win(5, weight: .infinity), win(6, weight: WEIGHT_DOESNT_MATTER),
+        ]))])
+        assertEquals(windows.map { $0.getWeight(.h) }, expected)
+    }
+
+    func testWeightAutoWhenAbsent() {
+        let expected = referenceWeights([1, 3, WEIGHT_AUTO])
+        let root = Workspace.get(byName: "a").rootTilingContainer
+        let windows = (1 ... 3).map { TestWindow.new(id: UInt32($0), parent: root) }
+        _ = applyTreeSnapshot([snapshotWorkspace("a", container(.tiles, .h, [win(1, weight: 1), win(2, weight: 3), win(3)]))])
+        assertEquals(windows.map { $0.getWeight(.h) }, expected)
+        assertEquals(expected[2], 2) // sanity: the average of the siblings bound before it
+    }
+
+    /// Weights produced by binding windows with these adaptive weights, in order, into a fresh h_tiles container
+    private func referenceWeights(_ weights: [CGFloat]) -> [CGFloat] {
+        let root = Workspace.get(byName: "reference").rootTilingContainer
+        let windows = weights.enumerated().map { TestWindow.new(id: UInt32(1000 + $0.offset), parent: root, adaptiveWeight: $0.element) }
+        return windows.map { $0.getWeight(.h) }
+    }
 }
 
 private func win(_ id: UInt32, weight: CGFloat? = nil) -> TreeSnapshotNode {
