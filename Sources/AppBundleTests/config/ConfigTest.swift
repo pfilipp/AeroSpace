@@ -220,6 +220,21 @@ final class ConfigTest: XCTestCase {
         )
     }
 
+    func testPersistTreeStateDefaultsFalse() {
+        assertEquals(parseConfig("").config.persistTreeState, false)
+    }
+
+    func testPersistTreeStateParses() {
+        let result = parseConfig("persist-tree-state = true")
+        assertEquals(result.errors, [])
+        assertEquals(result.config.persistTreeState, true)
+    }
+
+    func testPersistTreeStateTypeError() {
+        let errors = parseConfig("persist-tree-state = 'yes'").strErrors
+        assertEquals(errors, ["[ERROR] persist-tree-state: Expected type is \'Bool\'. But actual type is \'String\'"])
+    }
+
     func testConfigParseError() {
         assertFalse(parseConfig("true").allowReloadConfig)
         assertEquals(
