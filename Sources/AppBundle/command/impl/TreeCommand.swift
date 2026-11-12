@@ -17,10 +17,7 @@ struct TreeCommand: Command {
 
         do {
             if args.json {
-                var result: [[String: Any]] = []
-                for workspace in workspaces {
-                    result.append(try await dumpWorkspaceJson(workspace, focus: focus))
-                }
+                let result = await dumpWorkspacesForJson(workspaces, floatingWindowsAsTilingWindows: args.floatingWindowsAsTilingWindows)
 
                 let jsonData = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
                 guard let jsonString = String(data: jsonData, encoding: .utf8) else {
@@ -38,105 +35,6 @@ struct TreeCommand: Command {
         } catch {
             return .fail(io.err("tree command failed: \(error)"))
         }
-    }
-
-    // MARK: - JSON output
-
-    @MainActor
-    private func dumpWorkspaceJson(_ workspace: Workspace, focus: LiveFocus) async throws -> [String: Any] {
-        var result: [String: Any] = [
-            "type": "workspace",
-            "name": workspace.name,
-            "is-visible": workspace.isVisible,
-            "is-focused": focus.workspace == workspace,
-            "monitor": workspace.workspaceMonitor.name,
-        ]
-
-        if args.floatingWindowsAsTilingWindows {
-            result["root-container"] = try await dumpTilingContainerJsonMerged(workspace, focus: focus)
-        } else {
-            result["root-container"] = try await dumpTilingContainerJson(workspace.rootTilingContainer, focus: focus)
-
-            var floatingWindows: [[String: Any]] = []
-            for window in workspace.floatingWindows {
-                floatingWindows.append(try await dumpWindowJson(window, focus: focus))
-            }
-            result["floating-windows"] = floatingWindows
-        }
-
-        let fullscreenWindows = workspace.macOsNativeFullscreenWindowsContainer.children
-            .filterIsInstance(of: Window.self)
-        var fullscreenWindowsResult: [[String: Any]] = []
-        for window in fullscreenWindows {
-            fullscreenWindowsResult.append(try await dumpWindowJson(window, focus: focus))
-        }
-        result["macos-fullscreen-windows"] = fullscreenWindowsResult
-
-        return result
-    }
-
-    @MainActor
-    private func dumpTilingContainerJsonMerged(_ workspace: Workspace, focus: LiveFocus) async throws -> [String: Any] {
-        let container = workspace.rootTilingContainer
-        let layoutStr = layoutString(container)
-
-        var children: [[String: Any]] = []
-        for child in container.children {
-            switch child.nodeCases {
-                case .tilingContainer(let tc):
-                    children.append(try await dumpTilingContainerJson(tc, focus: focus))
-                case .window(let w):
-                    children.append(try await dumpWindowJson(w, focus: focus))
-                default:
-                    children.append(["type": "unknown"] as [String: Any])
-            }
-        }
-        for window in workspace.floatingWindows {
-            children.append(try await dumpWindowJson(window, focus: focus))
-        }
-
-        return [
-            "type": "container",
-            "layout": layoutStr,
-            "orientation": container.orientation == .h ? "horizontal" : "vertical",
-            "children": children,
-        ]
-    }
-
-    @MainActor
-    private func dumpTilingContainerJson(_ container: TilingContainer, focus: LiveFocus) async throws -> [String: Any] {
-        let layoutStr = layoutString(container)
-
-        var children: [[String: Any]] = []
-        for child in container.children {
-            switch child.nodeCases {
-                case .tilingContainer(let tc):
-                    children.append(try await dumpTilingContainerJson(tc, focus: focus))
-                case .window(let w):
-                    children.append(try await dumpWindowJson(w, focus: focus))
-                default:
-                    children.append(["type": "unknown"] as [String: Any])
-            }
-        }
-
-        return [
-            "type": "container",
-            "layout": layoutStr,
-            "orientation": container.orientation == .h ? "horizontal" : "vertical",
-            "children": children,
-        ]
-    }
-
-    @MainActor
-    private func dumpWindowJson(_ window: Window, focus: LiveFocus) async throws -> [String: Any] {
-        return [
-            "type": "window",
-            "window-id": window.windowId,
-            "app-bundle-id": window.app.rawAppBundleId ?? "unknown",
-            "app-name": window.app.name ?? "unknown",
-            "title": try await window.getTitle(.nonCancellable),
-            "is-focused": focus.windowOrNil?.windowId == window.windowId,
-        ]
     }
 
     // MARK: - Text tree output
@@ -263,13 +161,15 @@ struct TreeCommand: Command {
 
     // MARK: - Helpers
 
-    private func layoutString(_ container: TilingContainer) -> String {
-        switch (container.layout, container.orientation) {
-            case (.tiles, .h): "h_tiles"
-            case (.tiles, .v): "v_tiles"
-            case (.accordion, .h): "h_accordion"
-            case (.accordion, .v): "v_accordion"
-        }
+    private func layoutString(_ container: TilingContainer) -> String { treeLayoutString(container) }
+}
+
+private func treeLayoutString(_ container: TilingContainer) -> String {
+    switch (container.layout, container.orientation) {
+        case (.tiles, .h): "h_tiles"
+        case (.tiles, .v): "v_tiles"
+        case (.accordion, .h): "h_accordion"
+        case (.accordion, .v): "v_accordion"
     }
 }
 
@@ -278,3 +178,127 @@ private let BOX_TEE = "\u{251C}"       // ├
 private let BOX_LAST = "\u{2514}"      // └
 private let BOX_H = "\u{2500}\u{2500}" // ──
 private let BOX_PIPE_PAD = "\u{2502}   " // │   (pipe + 3 spaces)
+
+// MARK: - JSON output
+
+/// The dictionaries `tree --json` serialises, for the given workspaces.
+/// A window title that can't be read is emitted as an empty string.
+@MainActor
+func dumpWorkspacesForJson(_ workspaces: [Workspace], floatingWindowsAsTilingWindows: Bool = false) async -> [[String: Any]] {
+    let focus = focus
+    var result: [[String: Any]] = []
+    for workspace in workspaces {
+        result.append(await dumpWorkspaceJson(workspace, focus: focus, floatingWindowsAsTilingWindows: floatingWindowsAsTilingWindows))
+    }
+    return result
+}
+
+@MainActor
+private func dumpWorkspaceJson(_ workspace: Workspace, focus: LiveFocus, floatingWindowsAsTilingWindows: Bool) async -> [String: Any] {
+    var result: [String: Any] = [
+        "type": "workspace",
+        "name": workspace.name,
+        "is-visible": workspace.isVisible,
+        "is-focused": focus.workspace == workspace,
+        "monitor": workspace.workspaceMonitor.name,
+    ]
+
+    if floatingWindowsAsTilingWindows {
+        result["root-container"] = await dumpTilingContainerJsonMerged(workspace, focus: focus)
+    } else {
+        result["root-container"] = await dumpTilingContainerJson(workspace.rootTilingContainer, focus: focus)
+
+        var floatingWindows: [[String: Any]] = []
+        for window in workspace.floatingWindows {
+            floatingWindows.append(await dumpWindowJson(window, focus: focus))
+        }
+        result["floating-windows"] = floatingWindows
+    }
+
+    let fullscreenWindows = workspace.macOsNativeFullscreenWindowsContainer.children
+        .filterIsInstance(of: Window.self)
+    var fullscreenWindowsResult: [[String: Any]] = []
+    for window in fullscreenWindows {
+        fullscreenWindowsResult.append(await dumpWindowJson(window, focus: focus))
+    }
+    result["macos-fullscreen-windows"] = fullscreenWindowsResult
+
+    return result
+}
+
+@MainActor
+private func dumpTilingContainerJsonMerged(_ workspace: Workspace, focus: LiveFocus) async -> [String: Any] {
+    let container = workspace.rootTilingContainer
+    let layoutStr = treeLayoutString(container)
+
+    var children: [[String: Any]] = []
+    for child in container.children {
+        switch child.nodeCases {
+            case .tilingContainer(let tc):
+                children.append(await dumpTilingContainerJson(tc, focus: focus))
+            case .window(let w):
+                children.append(await dumpWindowJson(w, focus: focus))
+            default:
+                children.append(["type": "unknown"] as [String: Any])
+        }
+    }
+    for window in workspace.floatingWindows {
+        children.append(await dumpWindowJson(window, focus: focus))
+    }
+
+    var result: [String: Any] = [
+        "type": "container",
+        "layout": layoutStr,
+        "orientation": container.orientation == .h ? "horizontal" : "vertical",
+        "children": children,
+    ]
+    if let weight = weightInTilingParent(container) { result["weight"] = weight }
+    return result
+}
+
+@MainActor
+private func dumpTilingContainerJson(_ container: TilingContainer, focus: LiveFocus) async -> [String: Any] {
+    let layoutStr = treeLayoutString(container)
+
+    var children: [[String: Any]] = []
+    for child in container.children {
+        switch child.nodeCases {
+            case .tilingContainer(let tc):
+                children.append(await dumpTilingContainerJson(tc, focus: focus))
+            case .window(let w):
+                children.append(await dumpWindowJson(w, focus: focus))
+            default:
+                children.append(["type": "unknown"] as [String: Any])
+        }
+    }
+
+    var result: [String: Any] = [
+        "type": "container",
+        "layout": layoutStr,
+        "orientation": container.orientation == .h ? "horizontal" : "vertical",
+        "children": children,
+    ]
+    if let weight = weightInTilingParent(container) { result["weight"] = weight }
+    return result
+}
+
+@MainActor
+private func dumpWindowJson(_ window: Window, focus: LiveFocus) async -> [String: Any] {
+    var result: [String: Any] = [
+        "type": "window",
+        "window-id": window.windowId,
+        "app-bundle-id": window.app.rawAppBundleId ?? "unknown",
+        "app-name": window.app.name ?? "unknown",
+        "title": (try? await window.getTitle(.nonCancellable)) ?? "",
+        "is-focused": focus.windowOrNil?.windowId == window.windowId,
+    ]
+    if let weight = weightInTilingParent(window) { result["weight"] = weight }
+    return result
+}
+
+/// Weight along the parent's orientation; nil for the root container and floating windows
+/// (same logic as `getWeightOrNil` in FrozenTreeNode.swift).
+@MainActor
+private func weightInTilingParent(_ node: TreeNode) -> CGFloat? {
+    ((node.parent as? TilingContainer)?.orientation).map { node.getWeight($0) }
+}
