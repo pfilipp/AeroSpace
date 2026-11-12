@@ -28,8 +28,9 @@ import Foundation
             assumeCancellable: false,
             layoutWorkspaces: false,
         )
+        let restored = restoreTreeStateAtLaunch()
         try await runLightSession(.startup, .forceRun) {
-            smartLayoutAtStartup()
+            if !restored { smartLayoutAtStartup() }
             _ = await config.afterStartupCommand.run(.defaultEnv, .emptyStdin)
         }
     }
