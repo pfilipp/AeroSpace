@@ -26,6 +26,7 @@ public enum CmdKind: String, CaseIterable, Equatable, Sendable {
     case listMonitors = "list-monitors"
     case listWindows = "list-windows"
     case listWorkspaces = "list-workspaces"
+    case loadTree = "load-tree"
     case macosNativeFullscreen = "macos-native-fullscreen"
     case macosNativeMinimize = "macos-native-minimize"
     case mode
@@ -103,6 +104,8 @@ func initSubcommands() -> [String: any SubCommandParserProtocol] {
                 result[kind.rawValue] = SubCommandParser(parseListWindowsCmdArgs)
             case .listWorkspaces:
                 result[kind.rawValue] = SubCommandParser(parseListWorkspacesCmdArgs)
+            case .loadTree:
+                result[kind.rawValue] = SubCommandParser(LoadTreeCmdArgs.init)
             case .macosNativeFullscreen:
                 result[kind.rawValue] = SubCommandParser(parseMacosNativeFullscreenCmdArgs)
             case .macosNativeMinimize:

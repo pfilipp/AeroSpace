@@ -24,6 +24,7 @@ let subcommandDescriptions = [
     ["  list-monitors", "Print monitors that satisfy conditions"],
     ["  list-windows", "Print windows that satisfy conditions"],
     ["  list-workspaces", "Print workspaces that satisfy conditions"],
+    ["  load-tree", "Apply a window tree described in a JSON file"],
     ["  macos-native-fullscreen", "Toggle macOS fullscreen for the focused window"],
     ["  macos-native-minimize", "Minimize focused window"],
     ["  mode", "Activate the specified binding mode"],

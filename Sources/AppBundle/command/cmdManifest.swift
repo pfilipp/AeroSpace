@@ -52,6 +52,8 @@ extension CmdArgs {
                 command = ListWindowsCommand(args: self as! ListWindowsCmdArgs)
             case .listWorkspaces:
                 command = ListWorkspacesCommand(args: self as! ListWorkspacesCmdArgs)
+            case .loadTree:
+                command = LoadTreeCommand(args: self as! LoadTreeCmdArgs)
             case .macosNativeFullscreen:
                 command = MacosNativeFullscreenCommand(args: self as! MacosNativeFullscreenCmdArgs)
             case .macosNativeMinimize:

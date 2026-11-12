@@ -53,6 +53,8 @@ aerospace -h;
     | layout [--window-id <window_id>|--root|--workspace <workspace>|--fail-if-noop]... (<layouts>)... [--window-id <window_id>|--root|--workspace <workspace>|--fail-if-noop]...
     | layout (--for-next-detected-window|tiling|floating)...
 
+    | load-tree <absolute-path>
+
     | macos-native-fullscreen [--fail-if-noop|--window-id <window_id>]... [on|off] [--fail-if-noop|--window-id <window_id>]...
 
     | macos-native-minimize [--window-id <window_id>]
@@ -89,6 +91,8 @@ aerospace -h;
     | true
 
     | summon-workspace [--fail-if-noop] <workspace> [--fail-if-noop]
+
+    | tree [--json] [--workspace <workspace>|--focused] [--floating-windows-as-tiling-windows]
 
     | trigger-binding <binding> --mode <mode_id>
     | trigger-binding --mode <mode_id> <binding>

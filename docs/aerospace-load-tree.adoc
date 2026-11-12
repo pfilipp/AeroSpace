@@ -1,0 +1,37 @@
+= aerospace-load-tree(1)
+include::util/man-attributes.adoc[]
+:manname: aerospace-load-tree
+// tag::purpose[]
+:manpurpose: Apply a window tree described in a JSON file
+// end::purpose[]
+
+// =========================================================== Synopsis
+== Synopsis
+[verse]
+// tag::synopsis[]
+aerospace load-tree [-h|--help] <absolute-path>
+// end::synopsis[]
+
+// =========================================================== Description
+== Description
+
+// tag::body[]
+{manpurpose}
+
+The file must contain the JSON array printed by `aerospace tree --json`.
+Windows are matched by window ID only.
+Windows that the file names but that can't be placed (they don't exist anymore, or they are minimized, hidden or in macOS native fullscreen) are skipped and reported on stdout, one `skipped: <window-id>` line per window, in ascending order.
+If the path is relative, the file can't be read or the JSON is invalid, the command fails with exit code 2 and the tree is left untouched.
+
+// =========================================================== Options
+include::util/conditional-options-header.adoc[]
+
+-h, --help:: Print help
+
+include::./util/conditional-arguments-header.adoc[]
+
+<absolute-path>:: Absolute path to the JSON file. The AeroSpace server reads the file, so a relative path is rejected
+// end::body[]
+
+// =========================================================== Footer
+include::util/man-footer.adoc[]

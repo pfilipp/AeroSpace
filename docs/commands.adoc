@@ -167,6 +167,13 @@ include::aerospace-list-workspaces.adoc[tags=synopsis]
 include::aerospace-list-workspaces.adoc[tags=purpose]
 include::aerospace-list-workspaces.adoc[tags=body]
 
+== load-tree
+----
+include::aerospace-load-tree.adoc[tags=synopsis]
+----
+include::aerospace-load-tree.adoc[tags=purpose]
+include::aerospace-load-tree.adoc[tags=body]
+
 == macos-native-fullscreen
 ----
 include::aerospace-macos-native-fullscreen.adoc[tags=synopsis]
@@ -287,6 +294,13 @@ include::./aerospace-summon-workspace.adoc[tags=synopsis]
 ----
 include::./aerospace-summon-workspace.adoc[tags=purpose]
 include::./aerospace-summon-workspace.adoc[tags=body]
+
+== tree
+----
+include::aerospace-tree.adoc[tags=synopsis]
+----
+include::aerospace-tree.adoc[tags=purpose]
+include::aerospace-tree.adoc[tags=body]
 
 == trigger-binding
 ----

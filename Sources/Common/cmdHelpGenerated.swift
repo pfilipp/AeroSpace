@@ -97,6 +97,9 @@ let list_workspaces_help_generated = """
        OR: list-workspaces [-h|--help] --all [--format <output-format>] [--count] [--json]
        OR: list-workspaces [-h|--help] --focused [--format <output-format>] [--count] [--json]
     """
+let load_tree_help_generated = """
+    USAGE: load-tree [-h|--help] <absolute-path>
+    """
 let macos_native_fullscreen_help_generated = """
     USAGE: macos-native-fullscreen [-h|--help] [--window-id <window-id>]
        OR: macos-native-fullscreen [-h|--help] [--window-id <window-id>] [--fail-if-noop] on
