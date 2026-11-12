@@ -11,11 +11,13 @@ final class TreeStateStoreTest: XCTestCase {
         dir = FileManager.default.temporaryDirectory.appendingPathComponent("aerospace-state-test-\(UUID().uuidString)")
         treeStateDirOverride = dir
         bootTimeOverride = 1000
+        bootSessionOverride = "BOOT-A"
     }
 
     override func tearDown() async throws {
         treeStateDirOverride = nil
         bootTimeOverride = nil
+        bootSessionOverride = nil
         try? FileManager.default.removeItem(at: dir)
     }
 
@@ -42,6 +44,7 @@ final class TreeStateStoreTest: XCTestCase {
         try writeCurrentTreeState(await encodeCurrentTreeState(now: 50))
         let state = try XCTUnwrap(rotateTreeStateAtLaunch())
         assertEquals(state.bootTime, 1000)
+        assertEquals(state.bootSession, "BOOT-A")
         assertEquals(state.writtenAt, 50)
         let expected = TreeSnapshotWorkspace(
             name: "a",
@@ -63,7 +66,7 @@ final class TreeStateStoreTest: XCTestCase {
         buildTree()
         let json = await encodeCurrentTreeState(now: 7)
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        assertEquals(Set(obj.keys), ["version", "boot-time", "written-at", "visible-workspaces", "workspaces"])
+        assertEquals(Set(obj.keys), ["version", "boot-time", "boot-session", "written-at", "visible-workspaces", "workspaces"])
         assertEquals(obj["version"] as? Int, 1)
         assertEquals(obj["boot-time"] as? Int, 1000)
         assertEquals(obj["written-at"] as? Int, 7)
@@ -125,6 +128,7 @@ final class TreeStateStoreTest: XCTestCase {
             w2 = TestWindow.new(id: 2, parent: $0)
             other = TilingContainer.newVTiles(parent: $0, adaptiveWeight: 1)
         }
+        XCTAssertTrue(Workspace.get(byName: "a").focusWorkspace())
         let before = treeStructureSignature()
         _ = w2.focusWindow()
         assertEquals(treeStructureSignature(), before)
@@ -133,6 +137,33 @@ final class TreeStateStoreTest: XCTestCase {
         XCTAssertNotEqual(moved, before)
         w2.setWeight(.v, 5)
         XCTAssertNotEqual(treeStructureSignature(), moved)
+    }
+
+    func testSignatureSeesVisibleWorkspaceChange() {
+        Workspace.get(byName: "a").rootTilingContainer.apply { TestWindow.new(id: 1, parent: $0) }
+        Workspace.get(byName: "b").rootTilingContainer.apply { TestWindow.new(id: 2, parent: $0) }
+        XCTAssertTrue(Workspace.get(byName: "a").focusWorkspace())
+        let before = treeStructureSignature()
+        XCTAssertTrue(Workspace.get(byName: "b").focusWorkspace())
+        XCTAssertNotEqual(treeStructureSignature(), before)
+    }
+
+    func testMissingBootSessionIsUnreadable() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let body = ##"{"version":1,"boot-time":1,"written-at":2,"visible-workspaces":[],"workspaces":[]"##
+        for (i, extra) in ["}", ",\"boot-session\":\"\"}"].enumerated() {
+            try Data((body + extra).utf8).write(to: dir.appendingPathComponent("current.json"))
+            XCTAssertNil(rotateTreeStateAtLaunch())
+            XCTAssertFalse(exists("current.json"))
+            assertEquals(previousNames().count, 1, additionalMsg: "iteration \(i)")
+        }
+    }
+
+    func testCurrentBootSessionIsStableAndNonEmpty() {
+        bootSessionOverride = nil
+        let first = currentBootSession()
+        XCTAssertFalse(first.isEmpty)
+        assertEquals(currentBootSession(), first)
     }
 
     func testStateDirRule() {

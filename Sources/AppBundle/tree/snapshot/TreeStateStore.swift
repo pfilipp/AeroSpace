@@ -3,6 +3,7 @@ import Common
 
 struct PersistedTreeState {
     let bootTime: Int
+    let bootSession: String
     let writtenAt: Int
     let visibleWorkspaces: [(topLeft: CGPoint, workspace: String)]
     let workspaces: [TreeSnapshotWorkspace]
@@ -14,6 +15,7 @@ private let keptPreviousStates = 5
 
 @MainActor var treeStateDirOverride: URL? = nil
 @MainActor var bootTimeOverride: Int? = nil
+@MainActor var bootSessionOverride: String? = nil
 
 /// `$XDG_STATE_HOME/aerospace` when set and non-empty, else `<home>/.local/state/aerospace`.
 func resolveTreeStateDir(env: [String: String], home: URL) -> URL {
@@ -38,6 +40,16 @@ func resolveTreeStateDir(env: [String: String], home: URL) -> URL {
     return Int(tv.tv_sec)
 }
 
+/// Per-boot UUID (`kern.bootsessionuuid`); unlike `kern.boottime` it is unaffected by wall-clock steps.
+@MainActor func currentBootSession() -> String {
+    if let bootSessionOverride { return bootSessionOverride }
+    var size = 0
+    guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 0 else { return "" }
+    var buf = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("kern.bootsessionuuid", &buf, &size, nil, 0) == 0 else { return "" }
+    return String(cString: buf)
+}
+
 // MARK: - Encode
 
 /// Serialises the live tree into the state-file JSON string (envelope + workspaces).
@@ -49,6 +61,7 @@ func resolveTreeStateDir(env: [String: String], home: URL) -> URL {
     let envelope: [String: Any] = [
         "version": 1,
         "boot-time": currentBootTime(),
+        "boot-session": currentBootSession(),
         "written-at": now,
         "visible-workspaces": visible,
         "workspaces": await dumpWorkspacesForJson(Workspace.all),
@@ -107,6 +120,7 @@ private func decodeTreeState(_ data: Data) -> PersistedTreeState? {
     guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
           obj["version"] as? Int == 1,
           let bootTime = obj["boot-time"] as? Int,
+          let bootSession = obj["boot-session"] as? String, !bootSession.isEmpty,
           let writtenAt = obj["written-at"] as? Int,
           let workspacesArray = obj["workspaces"] as? [Any],
           let workspacesData = try? JSONSerialization.data(withJSONObject: workspacesArray),
@@ -119,7 +133,7 @@ private func decodeTreeState(_ data: Data) -> PersistedTreeState? {
         else { return nil }
         return (CGPoint(x: corner[0], y: corner[1]), name)
     }
-    return PersistedTreeState(bootTime: bootTime, writtenAt: writtenAt, visibleWorkspaces: visible, workspaces: workspaces)
+    return PersistedTreeState(bootTime: bootTime, bootSession: bootSession, writtenAt: writtenAt, visibleWorkspaces: visible, workspaces: workspaces)
 }
 
 // MARK: - Signature
@@ -127,6 +141,10 @@ private func decodeTreeState(_ data: Data) -> PersistedTreeState? {
 /// Stable description of the tree that excludes titles and focus; equal strings mean nothing worth writing changed.
 @MainActor func treeStructureSignature() -> String {
     var out = ""
+    for monitor in monitorInfos {
+        let corner = monitor.rect.topLeftCorner
+        out += "mon(\(corner.x),\(corner.y))=\(monitor.activeWorkspace.name);"
+    }
     for ws in Workspace.all {
         out += "ws(\(ws.name)){"
         signature(ws.rootTilingContainer, parentOrientation: nil, &out)
