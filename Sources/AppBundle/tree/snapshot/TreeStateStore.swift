@@ -58,7 +58,7 @@ func resolveTreeStateDir(env: [String: String], home: URL) -> URL {
         let corner = $0.rect.topLeftCorner
         return ["monitor-top-left": [Double(corner.x), Double(corner.y)], "workspace": $0.activeWorkspace.name]
     }
-    let envelope: [String: Any] = [
+    var envelope: [String: Any] = [
         "version": 1,
         "boot-time": currentBootTime(),
         "boot-session": currentBootSession(),
@@ -66,8 +66,35 @@ func resolveTreeStateDir(env: [String: String], home: URL) -> URL {
         "visible-workspaces": visible,
         "workspaces": await dumpWorkspacesForJson(Workspace.all),
     ]
+    // `JSONSerialization.data` raises an uncatchable Objective-C exception on NaN/infinity
+    if !JSONSerialization.isValidJSONObject(envelope) {
+        envelope = treeStateJsonDroppingNonFiniteWeights(envelope) as? [String: Any] ?? [:]
+        if !JSONSerialization.isValidJSONObject(envelope) { return "" }
+    }
     let data = (try? JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted, .sortedKeys])) ?? Data()
     return String(data: data, encoding: .utf8) ?? ""
+}
+
+/// Returns `value` with every `weight` entry that is not a finite number removed, recursively
+func treeStateJsonDroppingNonFiniteWeights(_ value: Any) -> Any {
+    if let dict = value as? [String: Any] {
+        var result: [String: Any] = [:]
+        for (key, child) in dict {
+            if key == "weight", let number = jsonNumberAsDouble(child), !number.isFinite { continue }
+            result[key] = treeStateJsonDroppingNonFiniteWeights(child)
+        }
+        return result
+    }
+    if let array = value as? [Any] { return array.map(treeStateJsonDroppingNonFiniteWeights) }
+    return value
+}
+
+private func jsonNumberAsDouble(_ value: Any) -> Double? {
+    if let v = value as? CGFloat { return Double(v) }
+    if let v = value as? Double { return v }
+    if let v = value as? Float { return Double(v) }
+    if let v = value as? NSNumber { return v.doubleValue }
+    return nil
 }
 
 // MARK: - Write
@@ -103,13 +130,21 @@ func resolveTreeStateDir(env: [String: String], home: URL) -> URL {
     return state
 }
 
+/// Keeps the 5 newest files, plus the newest readable file from another boot when it is older than those,
+/// so restarts after a reboot never push the pre-reboot arrangement out
 @MainActor private func prunePreviousStates() {
     let fm = FileManager.default
     guard let names = try? fm.contentsOfDirectory(atPath: previousStatesDir.path) else { return }
-    let numbered = names.compactMap { n -> (Int, String)? in
+    let newestFirst = names.compactMap { n -> (Int, String)? in
         n.hasSuffix(".json") ? Int(n.dropLast(5)).map { ($0, n) } : nil
+    }.sorted(by: { $0.0 > $1.0 }).map(\.1)
+    if newestFirst.count <= keptPreviousStates { return }
+    let bootSession = currentBootSession()
+    let protected = newestFirst.first { name in
+        let state = (try? Data(contentsOf: previousStatesDir.appendingPathComponent(name))).flatMap { decodeTreeState($0) }
+        return state.map { $0.bootSession != bootSession } ?? false
     }
-    for (_, n) in numbered.sorted(by: { $0.0 > $1.0 }).dropFirst(keptPreviousStates) {
+    for n in newestFirst.dropFirst(keptPreviousStates) where n != protected {
         try? fm.removeItem(at: previousStatesDir.appendingPathComponent(n))
     }
 }
@@ -156,7 +191,8 @@ private func decodeTreeState(_ data: Data) -> PersistedTreeState? {
 }
 
 @MainActor private func signature(_ node: TreeNode, parentOrientation: Orientation?, _ out: inout String) {
-    let weight = parentOrientation.map { "@\(node.getWeight($0))" } ?? ""
+    // Rounded to whole points: layout arithmetic jitters weights by fractions on every layout
+    let weight = parentOrientation.map { "@" + String(format: "%.0f", node.getWeight($0)) } ?? ""
     if let window = node as? Window {
         out += "w\(window.windowId)\(weight);"
     } else if let container = node as? TilingContainer {

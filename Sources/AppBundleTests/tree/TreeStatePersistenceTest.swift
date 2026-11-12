@@ -154,16 +154,129 @@ final class TreeStatePersistenceTest: XCTestCase {
     func testRestoresVisibleWorkspace() async throws {
         let a = Workspace.get(byName: "a")
         let b = Workspace.get(byName: "b")
-        TestWindow.new(id: 1, parent: a.rootTilingContainer)
         TestWindow.new(id: 2, parent: b.rootTilingContainer)
         assertTrue(b.focusWorkspace())
         assertEquals(mainMonitorInfo.activeWorkspace.name, "b")
         try await saveState()
-        assertTrue(a.focusWorkspace())
+        assertTrue(a.focusWorkspace()) // `a` is empty: nothing focused
         assertEquals(mainMonitorInfo.activeWorkspace.name, "a")
+        XCTAssertNil(focus.windowOrNil)
 
         XCTAssertTrue(restoreTreeStateAtLaunch())
         assertEquals(mainMonitorInfo.activeWorkspace.name, "b")
+        assertEquals(focus.workspace.name, "b")
+        XCTAssertTrue(focus.workspace.isVisible)
+    }
+
+    func testFocusFollowsRestoredWindow() async throws {
+        let a = Workspace.get(byName: "a")
+        let window1 = TestWindow.new(id: 1, parent: a.rootTilingContainer)
+        TestWindow.new(id: 2, parent: a.rootTilingContainer)
+        assertTrue(window1.focusWindow())
+        try await saveState()
+        // Startup registers the focused window into its monitor's stub workspace
+        let stub = Workspace.get(byName: "stub")
+        window1.bind(to: stub.rootTilingContainer, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+        assertTrue(window1.focusWindow())
+        assertEquals(focus.workspace.name, "stub")
+
+        XCTAssertTrue(restoreTreeStateAtLaunch())
+        assertEquals(focus.workspace.name, "a")
+        XCTAssertTrue(a.isVisible)
+        assertEquals(focus.windowOrNil?.windowId, 1)
+        assertEquals(a.rootTilingContainer.layoutDescription, .h_tiles([.window(1), .window(2)]))
+    }
+
+    func testFocusFallsBackToVisibleWorkspace() async throws {
+        let a = Workspace.get(byName: "a")
+        let b = Workspace.get(byName: "b")
+        TestWindow.new(id: 1, parent: a.rootTilingContainer)
+        TestWindow.new(id: 2, parent: b.rootTilingContainer)
+        assertTrue(b.focusWorkspace())
+        try await saveState()
+        let stub = Workspace.get(byName: "stub")
+        assertTrue(stub.focusWorkspace()) // No focused window, and the restore hides `stub`
+        XCTAssertNil(focus.windowOrNil)
+
+        XCTAssertTrue(restoreTreeStateAtLaunch())
+        XCTAssertFalse(stub.isVisible)
+        assertEquals(focus.workspace.name, "b")
+        XCTAssertTrue(focus.workspace.isVisible)
+    }
+
+    func testFocusedWindowOutsideSavedStateKeepsFocusVisible() async throws {
+        let a = Workspace.get(byName: "a")
+        let b = Workspace.get(byName: "b")
+        TestWindow.new(id: 1, parent: a.rootTilingContainer)
+        TestWindow.new(id: 2, parent: b.rootTilingContainer)
+        assertTrue(b.focusWorkspace())
+        try await saveState()
+        let window3 = TestWindow.new(id: 3, parent: Workspace.get(byName: "c").rootTilingContainer)
+        assertTrue(window3.focusWindow())
+        assertEquals(focus.workspace.name, "c")
+
+        XCTAssertTrue(restoreTreeStateAtLaunch())
+        XCTAssertTrue(focus.workspace.isVisible)
+        assertEquals(focus.windowOrNil?.windowId, 3)
+    }
+
+    func testFirstWriteRotatesWhenLaunchDidNot() async throws {
+        let windows = buildTree()
+        let oldJson = await encodeCurrentTreeState(now: 50)
+        try writeCurrentTreeState(oldJson)
+        config.persistTreeState = false // e.g. the config failed to parse at launch
+        XCTAssertFalse(restoreTreeStateAtLaunch())
+        XCTAssertTrue(exists("current.json"))
+        XCTAssertTrue(previousNames().isEmpty)
+
+        config.persistTreeState = true // reload-config
+        flatten(Workspace.get(byName: "a"), [windows[3]!, windows[2]!, windows[1]!])
+        await persistTreeStateIfChanged()
+
+        assertEquals(previousNames(), ["50.json"])
+        assertEquals(try String(contentsOf: dir.appendingPathComponent("previous/50.json"), encoding: .utf8), oldJson)
+        let state = try XCTUnwrap(rotateTreeStateAtLaunch())
+        assertEquals(windowIds(of: state, workspace: "a"), [3, 2, 1])
+    }
+
+    func testNoWritesAfterPowerOffNotice() async throws {
+        treeStateWriteThrottleInterval = 60
+        let windows = buildTree()
+        XCTAssertFalse(restoreTreeStateAtLaunch())
+        await persistTreeStateIfChanged()
+        let written = try Data(contentsOf: currentFile)
+        let a = Workspace.get(byName: "a")
+        flatten(a, [windows[3]!, windows[2]!, windows[1]!])
+        await persistTreeStateIfChanged()
+        XCTAssertTrue(isTreeStateDeferredWritePending)
+
+        treeStatePersistenceWillPowerOff()
+        XCTAssertFalse(isTreeStateDeferredWritePending)
+        treeStateWriteThrottleInterval = 0
+        flatten(a, [windows[2]!, windows[1]!, windows[3]!])
+        await persistTreeStateIfChanged()
+        XCTAssertFalse(isTreeStateDeferredWritePending)
+        assertEquals(try Data(contentsOf: currentFile), written)
+    }
+
+    func testTornDumpIsNotWritten() async throws {
+        treeStateWriteThrottleInterval = 0.05
+        let a = Workspace.get(byName: "a")
+        var window2: Window!
+        let hook = TitleReadHookWindow(id: 1, parent: a.rootTilingContainer)
+        a.rootTilingContainer.apply { window2 = TestWindow.new(id: 2, parent: $0) }
+        XCTAssertFalse(restoreTreeStateAtLaunch())
+        // The tree changes while the encode is suspended reading a title
+        hook.onTitleRead = { window2.bind(to: a.rootTilingContainer, adaptiveWeight: 1, index: 0) }
+
+        await persistTreeStateIfChanged()
+        XCTAssertFalse(exists("current.json"))
+        XCTAssertTrue(isTreeStateDeferredWritePending)
+
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(isTreeStateDeferredWritePending)
+        let state = try XCTUnwrap(rotateTreeStateAtLaunch())
+        assertEquals(windowIds(of: state, workspace: "a"), [2, 1])
     }
 
     func testDeferredWriteCoalesces() async throws {
@@ -184,9 +297,31 @@ final class TreeStatePersistenceTest: XCTestCase {
         try await Task.sleep(for: .milliseconds(300))
         assertEquals(treeStateDeferredWritesScheduled, 1)
         let state = try XCTUnwrap(rotateTreeStateAtLaunch())
-        let saved = try XCTUnwrap(state.workspaces.first { $0.name == "a" })
-        assertEquals(saved.root.children.map { child -> UInt32? in
+        assertEquals(windowIds(of: state, workspace: "a"), [2, 1, 3])
+    }
+
+    /// IDs of the root's direct window children
+    private func windowIds(of state: PersistedTreeState, workspace: String) -> [UInt32?] {
+        (state.workspaces.first { $0.name == workspace }?.root.children ?? []).map { child -> UInt32? in
             if case .window(let w) = child { w.windowId } else { nil }
-        }, [2, 1, 3])
+        }
+    }
+}
+
+/// Runs `onTitleRead` once, inside the encode's title read, to change the tree mid-dump
+private final class TitleReadHookWindow: Window {
+    nonisolated(unsafe) var onTitleRead: (@MainActor () -> Void)?
+
+    @MainActor
+    init(id: UInt32, parent: NonLeafTreeNodeObject) {
+        super.init(id: id, TestApp.shared, lastFloatingSize: nil, parent: parent, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+    }
+
+    override func getTitle(_ cm: CancellationMode) async throws -> String {
+        if let hook = unsafe onTitleRead {
+            unsafe onTitleRead = nil
+            await hook()
+        }
+        return "hook"
     }
 }

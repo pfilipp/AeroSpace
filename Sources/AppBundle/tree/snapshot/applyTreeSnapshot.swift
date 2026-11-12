@@ -54,8 +54,10 @@ struct TreeSnapshotApplyResult: Equatable {
     }
 
     // Binding marks every bound node as the most recent child. Give each workspace back its most recent window, if
-    // it's still there, so that focusing the workspace lands where it did before. Focus itself is stored by window ID
-    // and workspace name, so it stays valid without any help
+    // it's still there, so that focusing the workspace lands where it did before. Focus is stored by window ID and
+    // workspace name: it stays valid while the focused window stays in its workspace, but if the snapshot moves it to
+    // another workspace, focus resolves to the old workspace without a window. Callers that need focus to follow the
+    // window must capture it before and call `focusWindow()` after (see `restoreTreeStateAtLaunch`)
     for (workspace, window) in prevMruWindows where window.nodeWorkspace === workspace {
         window.markAsMostRecentChild()
     }

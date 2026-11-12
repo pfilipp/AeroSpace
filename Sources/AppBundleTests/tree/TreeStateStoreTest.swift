@@ -97,6 +97,65 @@ final class TreeStateStoreTest: XCTestCase {
         assertEquals(previousNames(), ["10.json", "11.json", "12.json", "13.json", "9.json"])
     }
 
+    func testPruneKeepsNewestFileFromAnotherBoot() async throws {
+        buildTree()
+        try writeCurrentTreeState(await encodeCurrentTreeState(now: 1))
+        _ = rotateTreeStateAtLaunch()
+        bootSessionOverride = "BOOT-B"
+        for now in 2 ... 8 {
+            try writeCurrentTreeState(await encodeCurrentTreeState(now: now))
+            _ = rotateTreeStateAtLaunch()
+        }
+        assertEquals(previousNames(), ["1.json", "4.json", "5.json", "6.json", "7.json", "8.json"])
+    }
+
+    func testPruneDoesNotProtectUnreadableFile() async throws {
+        let previous = dir.appendingPathComponent("previous")
+        try FileManager.default.createDirectory(at: previous, withIntermediateDirectories: true)
+        try Data("garbage".utf8).write(to: previous.appendingPathComponent("1.json"))
+        buildTree()
+        for now in 2 ... 7 {
+            try writeCurrentTreeState(await encodeCurrentTreeState(now: now))
+            _ = rotateTreeStateAtLaunch()
+        }
+        assertEquals(previousNames(), ["3.json", "4.json", "5.json", "6.json", "7.json"])
+    }
+
+    func testSignatureIgnoresSubPointWeightNoise() {
+        let root = Workspace.get(byName: "a").rootTilingContainer
+        let window1 = TestWindow.new(id: 1, parent: root, adaptiveWeight: 100.2)
+        TestWindow.new(id: 2, parent: root, adaptiveWeight: 100)
+        let base = treeStructureSignature()
+        window1.setWeight(.h, 100.4)
+        assertEquals(treeStructureSignature(), base)
+        window1.setWeight(.h, 103)
+        XCTAssertNotEqual(treeStructureSignature(), base)
+    }
+
+    func testNonFiniteWeightDoesNotCrashEncoding() async throws {
+        let root = Workspace.get(byName: "a").rootTilingContainer
+        TestWindow.new(id: 1, parent: root, adaptiveWeight: .infinity)
+        TestWindow.new(id: 2, parent: root, adaptiveWeight: 1)
+        let json = await encodeCurrentTreeState(now: 1)
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let a = try XCTUnwrap((obj["workspaces"] as? [[String: Any]])?.first { $0["name"] as? String == "a" })
+        let children = try XCTUnwrap((a["root-container"] as? [String: Any])?["children"] as? [[String: Any]])
+        XCTAssertNil(children[0]["weight"])
+        XCTAssertNotNil(children[1]["weight"])
+    }
+
+    func testDropNonFiniteWeightsHelper() throws {
+        let inputChildren: [[String: Any]] = [["weight": Double.infinity, "window-id": 1], ["weight": CGFloat(2)]]
+        let input: [String: Any] = ["weight": CGFloat.nan, "children": inputChildren]
+        let cleaned = try XCTUnwrap(treeStateJsonDroppingNonFiniteWeights(input) as? [String: Any])
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(cleaned))
+        XCTAssertNil(cleaned["weight"])
+        let children = try XCTUnwrap(cleaned["children"] as? [[String: Any]])
+        XCTAssertNil(children[0]["weight"])
+        assertEquals(children[0]["window-id"] as? Int, 1)
+        assertEquals((children[1]["weight"] as? NSNumber)?.doubleValue, 2)
+    }
+
     func testRotateSameSecondDoesNotThrow() async throws {
         buildTree()
         for _ in 1 ... 2 {
