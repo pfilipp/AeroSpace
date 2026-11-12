@@ -1,6 +1,8 @@
 import Common
 import Foundation
 
+private let maxLoadTreeFileSize: Int64 = 10 * 1024 * 1024
+
 struct LoadTreeCommand: Command {
     let args: LoadTreeCmdArgs
     /*conforms*/ let shouldResetClosedWindowsCache = true
@@ -9,6 +11,17 @@ struct LoadTreeCommand: Command {
         let path = args.path.val
         guard path.hasPrefix("/") else {
             return .fail(io.err("load-tree: path must be absolute: '\(path)'"))
+        }
+        // The server reads the file on the main actor: never touch FIFOs, devices or huge files
+        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: resolved) else {
+            return .fail(io.err("load-tree: can't read '\(path)': no such file"))
+        }
+        guard attrs[.type] as? FileAttributeType == .typeRegular else {
+            return .fail(io.err("load-tree: '\(path)' is not a regular file"))
+        }
+        guard let size = (attrs[.size] as? NSNumber)?.int64Value, size <= maxLoadTreeFileSize else {
+            return .fail(io.err("load-tree: '\(path)': file is larger than 10 MB"))
         }
         let json: String
         do {

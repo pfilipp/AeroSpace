@@ -53,7 +53,7 @@ aerospace -h;
     | layout [--window-id <window_id>|--root|--workspace <workspace>|--fail-if-noop]... (<layouts>)... [--window-id <window_id>|--root|--workspace <workspace>|--fail-if-noop]...
     | layout (--for-next-detected-window|tiling|floating)...
 
-    | load-tree <absolute-path>
+    | load-tree <absolute_path>
 
     | macos-native-fullscreen [--fail-if-noop|--window-id <window_id>]... [on|off] [--fail-if-noop|--window-id <window_id>]...
 
@@ -129,6 +129,7 @@ aerospace -h;
 <workspace> ::= {{{ aerospace list-workspaces --monitor all --empty no }}};
 <number> ::= {{{ true }}};
 <monitor_pattern> ::= {{{ true }}};
+<absolute_path> ::= {{{ true }}};
 <layouts> ::= h_tiles|v_tiles|h_accordion|v_accordion|tiles|accordion|horizontal|vertical|tiling|floating;
 
 <list_workspaces1_flag> ::= --visible [no] | --empty [no] | --format <output_format> | --format <output_format> | --count | --json;
