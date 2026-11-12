@@ -11,7 +11,7 @@ public struct TreeCmdArgs: CmdArgs {
             "--floating-windows-as-tiling-windows": trueBoolFlag(\.floatingWindowsAsTilingWindows),
         ],
         posArgs: [],
-        conflictingOptions: [
+        conflictingFlags: [
             ["--workspace", "--focused"],
         ],
     )

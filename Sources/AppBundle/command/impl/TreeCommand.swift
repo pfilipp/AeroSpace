@@ -6,7 +6,7 @@ struct TreeCommand: Command {
     /*conforms*/ let shouldResetClosedWindowsCache = false
 
     func run(_ env: CmdEnv, _ io: CmdIo) async -> BinaryExitCode {
-        let focus = focus
+        let focus = globalFocus
         let workspaces: [Workspace] = if args.focusedOnly {
             [focus.workspace]
         } else if let wsName = args.workspaceFilter {
@@ -49,7 +49,7 @@ struct TreeCommand: Command {
             "name": workspace.name,
             "is-visible": workspace.isVisible,
             "is-focused": focus.workspace == workspace,
-            "monitor": workspace.workspaceMonitor.name,
+            "monitor": workspace.workspaceMonitorInfo.name,
         ]
 
         if args.floatingWindowsAsTilingWindows {
@@ -131,7 +131,7 @@ struct TreeCommand: Command {
     private func dumpWindowJson(_ window: Window, focus: LiveFocus) async throws -> [String: Any] {
         return [
             "type": "window",
-            "window-id": window.windowId,
+            "window-id": window.windowId.rawId,
             "app-bundle-id": window.app.rawAppBundleId ?? "unknown",
             "app-name": window.app.name ?? "unknown",
             "title": try await window.getTitle(.nonCancellable),
@@ -147,7 +147,7 @@ struct TreeCommand: Command {
         var attrs: [String] = []
         if isFocused { attrs.append("focused") }
         if workspace.isVisible { attrs.append("visible") }
-        attrs.append("monitor: \"\(workspace.workspaceMonitor.name)\"")
+        attrs.append("monitor: \"\(workspace.workspaceMonitorInfo.name)\"")
         let attrStr = attrs.joined(separator: ", ")
 
         lines.append("Workspace \"\(workspace.name)\" (\(attrStr))")
