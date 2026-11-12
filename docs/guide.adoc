@@ -254,6 +254,29 @@ after-startup-command = [
 ]
 ----
 
+[#menu-bar-item]
+=== menu-bar-item
+
+Use `menu-bar-item` to add your own entries to the menu bar menu.
+Each entry has a `label` and a `run` (a command or a list of commands, like in bindings).
+Clicking the entry runs the commands in order.
+The entries are shown in config order, after the workspaces list, while AeroSpace is enabled.
+
+[source,toml]
+----
+[[menu-bar-item]]
+label = 'Save layout'
+run = 'exec-and-forget ~/bin/save-layout'
+
+[[menu-bar-item]]
+label = 'Reset workspace'
+run = ['flatten-workspace-tree', 'balance-sizes']
+----
+
+`[[menu-bar-item]]` is a TOML table header: keys written below it belong to the entry,
+so place these blocks after your top-level keys, or use the inline form
+`menu-bar-item = [{ label = 'Save layout', run = '...' }]`.
+
 [#exec-env-vars]
 === exec-* Environment Variables
 

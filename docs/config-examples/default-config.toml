@@ -21,6 +21,12 @@ persist-tree-state = false
 # After setting this to true, reload once manually to start the auto-reloading
 auto-reload-config = false
 
+# Custom entries in the menu bar menu. Each one runs AeroSpace commands when clicked
+# menu-bar-item = [
+#     { label = 'Balance sizes', run = 'balance-sizes' },
+#     { label = 'Reset workspace', run = ['flatten-workspace-tree', 'balance-sizes'] },
+# ]
+
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
 enable-normalization-flatten-containers = true
 enable-normalization-opposite-orientation-for-nested-containers = true

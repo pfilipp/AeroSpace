@@ -41,6 +41,15 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
                 }
                 Divider()
             }
+            if let token: RunSessionGuard = .isServerEnabled, !config.menuBarItems.isEmpty {
+                ForEach(config.menuBarItems.indices, id: \.self) { index in
+                    let item = config.menuBarItems[index]
+                    Button(item.label) {
+                        Task.startUnstructured { try await runMenuBarItem(item, token) }
+                    }
+                }
+                Divider()
+            }
             Button {
                 NSWorkspace.shared.open(URL(string: "https://github.com/sponsors/nikitabobko").orDie())
                 viewModel.sponsorshipMessage = sponsorshipPrompts.randomElement().orDie()

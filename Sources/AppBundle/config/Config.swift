@@ -62,6 +62,7 @@ struct Config: ConvenienceMutable {
     var modes: [String: Mode] = [:]
     var onWindowDetected: [WindowDetectedCallback] = []
     var onModeChanged: Shell<any Command> = .empty
+    var menuBarItems: [MenuBarItem] = []
 }
 
 struct FocusFollowsMouse: ConvenienceMutable {
